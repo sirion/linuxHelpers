@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+cmd=$(basename "$0")
+groupSize=3
+
+if [[ $# -lt 1 ]]; then
+  echo "Not enough parameters given"
+  exit 1
+fi
+
+imageFiles=()
+
+for param in "$@"; do
+  if [[ "${param:0:1}" != "-" ]]; then
+    # Should be an image file...
+    if [[ ! -f "$param" ]]; then
+      echo "The following parameter is not a file: \"$param\""
+      exit 3
+    fi
+    
+    imageFiles=( "${imageFiles[@]}" "$param" )
+    
+  else
+
+#      if [[ "${param:0:2}" == "-g" ]]; then
+#        groupSize=$1
+#        echo "Setting groupsize to $1"
+#        continue # Always continue if parameter is used
+#      fi
+      
+      if [[ "${param:0:12}" == "--groupsize=" ]]; then
+        groupSize=${param:12}
+        echo "Setting groupsize to ${param:12}"
+        continue # Always continue if parameter is used
+      fi
+      
+      # Parameter not used.
+      echo "Unknown parameter: \"$param\""
+      exit 2
+  fi
+  
+done
+
+# Only image files should be  left now...
+if [[ $# -lt 1 ]]; then
+  echo "Not enough parameters given"
+  exit 4
+fi
+
+if [[ $(( ${#imageFiles[@]} % $groupSize )) != 0 ]]; then
+  echo "Number of image files (${#imageFiles}) not dividable by groupsize ($groupSize)"
+  echo ${#imageFiles[@]} "%" $groupSize "=" $(( ${#imageFiles[@]} % $groupSize ))
+  exit 5
+fi
+
+group=()
+for file in "${imageFiles[@]}"; do
+  # Add another picture to the group
+  group=( "${group[@]}" "$file" )
+  
+  if [[ ${#group[@]} == $groupSize ]]; then
+    enfuseAligneRaw "${group[@]}"
+    group=()
+  fi
+done
+
+

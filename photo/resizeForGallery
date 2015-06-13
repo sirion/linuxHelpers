@@ -1,0 +1,65 @@
+#! /bin/bash
+
+inputs="$@"
+
+outputExtension="jpg"
+resizeOptions="-quality 85 -sharpen 1.5 -auto-orient"
+resizeSizes=(
+    "_original|"        # original (just apply options)
+    "_high|1920x1080"   # High Resolution   (Full HD - 16:9)
+    "_medium|1280x1024" # Medium Resolution (standard 17-19" displays - 4:3 )
+    "_low|800x600"      # Low Resolution    (SVGA - 4:3)
+    "_thumb|100x100"    # Thumbnail         (100px max - 1:1)
+)
+
+
+
+
+for input in "${inputs[@]}"; do
+    echo "Creating images for $input..."
+
+    if [[ "$input" == "" ]]; then
+      echo "No input file parameter given."
+      exit 1
+    fi
+
+    if [[ ! -f "$input" ]]; then
+      echo "Input file parameter is no file: '$input'"
+      exit 2
+    fi
+
+    supported=$(identify -quiet -ping "$input" >/dev/null 2>/dev/null ; echo $?)
+    if [[ "$supported" != "0" ]]; then
+      echo "Input file format not supported by ImageMagick."
+      exit 3
+    fi
+
+
+
+
+
+    # dir=$(dirname "$input")
+    # ext="${input##*.}"
+    base="${input%.*}"
+    for size in "${resizeSizes[@]}"; do
+      name="${size%|*}"
+      res="${size##*|}"
+      
+      output="${base}${name}.$outputExtension"
+      resizer=" -resize $res"
+      
+      if [[ "$res" == "" ]]; then
+        resizer=""
+      fi
+      
+      if [[ "$input" == "$output" ]]; then
+        # If the original file is already a Jpeg, ignore it.
+        fileName=$(basename "$input")
+        echo "Ignoring original Image size for $fileName - it is already a Jpeg file..."
+        continue
+      fi
+
+      convert "$input" $resizer $resizeOptions "$output"
+    done
+
+done

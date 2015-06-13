@@ -1,0 +1,758 @@
+#!/bin/bash
+
+###############################################################################
+
+scriptName="HDR Helper 01"
+
+scriptAuthor="Jens Himmelrath"
+
+scriptVersion="0.1b"
+
+scriptDate="2012-01-21"
+
+scriptUrl="http://photo.himmelrath.net"
+
+scriptLicense="Mi"
+
+scriptDescription="Aligns the given images and make an LDR version from them."
+
+scriptgeneralizedCommand=$(cat <<EOT
+--ldr=LDRFILE [--hdr=HDRFILE] [--tmp=/tmp] IMAGE1 IMAGE2 [IMAGE3 [...]]
+EOT
+)
+
+scriptExampleCommand=$(cat <<EOT
+--ldr=out.ldr --hdr=out.hdr img1.tiff img2.tiff img3.tiff img4.tiff
+EOT
+)
+
+
+scriptObligatoryParameters=$(cat <<EOT
+ IMAGEx        The input images the should be stacked and blended. At least two must
+               be provided. If no prefix is set the name of the first image file is
+               used as the prefix.
+EOT
+)
+
+scriptOptionalParameters=$(cat <<EOT
+ --output=      Which outputs should be created by the script. Any combination of 
+ short: -o      the following values is possible:
+                    l    - LDR .jpg picture
+                    h    - HDR .exr picture
+                    a    - aligned images as layers
+                (Default: lha)
+
+ --outDir=      Directory where the output files are stored. If this is not set, the
+ short: -d      files will bes stored in the same directory as the first input file.
+ 
+ --prefix=      Prefix for all output formats. Automatically activates all available
+ short: -p      outputs. If not set, the name of the first input file (+suffixes) is
+                used.
+
+ --ldr=         The LDR output image file prefix, meaning the filename (.jpg is 
+ short: -l      added) to write the final result to. This file will be overwritten 
+                without notice.
+               
+ --hdr=         The HDR output image file prefix, meaning the filename (.exr is 
+ short: -h      added) to write the combined image values to. This file will be 
+                overwritten without notice.
+                (If this parameter is not set, no HDR file is created.)
+ 
+ --layers=      The prefix of the image file containing the aligned and cropped 
+ short: -a      input images as layers. 
+ 
+ --layersFormat The format in which the layered image is saved. Currently the 
+ short: -f      following formats are supported:
+                    xcf - Gimp's default format that supports all of The Gimp's
+                          features. (Medium filesize)
+                    psd - Photoshop's PSD format, which can be opened by virtually
+                          any software. (Big filesize)
+                    all - Create output in all supported formats. (Only needed for
+                          testing/comparing)
+                (Default: xcf)      
+               
+ --tmp=         Temporary directory to store the aligned images in before blending
+ short: -t      and/or fusing them. 
+                (Default: /tmp)
+               
+ --help         Shows this.
+ short: -h
+EOT
+)
+
+scriptExitCodesList=$(cat <<EOT
+  0 - Everything is fine
+  1 - Wrong parameters
+  2 - Unknown parameters
+ 23 - I am watching you.
+ 42 - Please state the question.
+ 99 - The requested feature is not (yet) implemented
+EOT
+)
+
+scriptRequiredPrograms=( 
+    "align_image_stack" "enfuse-mp" "enfuse" "convert" "dirname" "basename"
+    "gimp" "pfsin"
+)
+
+
+###############################################################################
+
+
+
+############################### Begin Functions ###############################
+# Functions have to be 'declared' prior to using them
+
+# General help that is shown whenever the script cannot be run because the user
+# did not provide sufficient parameters
+function showHelp {
+    message=$(cat <<EOT
+
+$scriptName v$scriptVersion 
+
+     Date:    $scriptDate
+     License: $scriptLicense
+     Author:  $scriptAuthor
+     see      $scriptUrl
+
+   "$cmd $scriptgeneralizedCommand"
+
+$scriptDescription
+
+Obligatory parameters:
+$scriptObligatoryParameters
+
+Optional parameters:
+$scriptOptionalParameters
+
+Example: 
+   "$cmd $scriptExampleCommand"
+
+Exit-Codes:
+$scriptExitCodesList
+
+EOT
+    )
+    output "$message"
+}
+
+# Used to output certain information only in verbose-mode
+function echoIfVerbose {
+    if [[ $verbose -eq 1 ]]; then
+        output $@
+    fi
+}
+
+# Depending on whether this is run in the terminal or not, output with echo or
+# zenity.
+# Whether zenity is available will not be checked - since, in a terminal it is not
+# needed and without a terminal - who should we tell?
+function output {
+  if tty -s; then
+      # "We are inside a terminal
+      echo "$@"  
+  else
+      # No terminal
+      zenity --info --text="$@"
+  fi
+}
+
+# End the script with the appropriate output.
+function endScript {
+    if [[ $errors -eq 1 ]]; then
+        output "Errors occurred. Please check the error-log: $errorLog"
+        statusCode=1
+    else
+        output "Done!"
+        statusCode=0
+    fi
+
+    echo ""
+
+    exit $statusCode
+}
+
+
+################################ End Functions ################################
+
+
+########################## Begin Prerequisites Check ##########################
+
+# Name of the Script file - still correct if file was renamed
+cmd=$(basename "$0")
+
+
+# Add the script's folder to the path. Useful if other programs in the same path
+# might be needed and all scripts are in a user defined folder.
+PATH=$PATH:$(dirname "$0")
+
+
+# Check for required programs before starting 
+requiredOk=1
+for prg in "${scriptRequiredPrograms[@]}"; do
+    path=$(which $prg)
+    if [[ "" == "$path" ]]; then
+        requiredOk=0
+        echo "ERROR: Required program '$prg' not found" >&2
+    fi
+done
+
+if [[ $requiredOk -eq 0 ]]; then
+    echo "       Please provide those programs in order to use this script" >&2
+    exit 2
+fi
+
+########################### End Prerequisites Check ###########################
+
+
+############################ Begin Parameter Check ############################
+
+# Initializing needed variables. These are usually the default values for all
+# parameters that are not obligatory.
+exitStatus=0
+pid=$$
+
+verbose=0
+tmpDir="/tmp"
+alignedPrefix="${cmd}_${pid}_aligned"
+layersPrefix="${cmd}_${pid}_layers"
+errorLog="$tmpDir/${cmd}_${pid}_errors.log"
+outHDR=""
+outLayers=""
+inFiles=""
+prefix=""
+outDir=""
+output="lha"
+layersFormat="xcf"
+pseudoHDR=0 # HDR from one Raw file...
+
+# Analyze parameters
+shortParamName=""
+for param in "$@"; do
+    knownParam=0
+
+    #### Always set $knownParam to 1 when a parameter is found
+
+
+    #### Example: parameter is "--of=" + the value.
+    #### since "--of=" is 5 characters long, we check for the first 5 characters
+    #### and if it is found use the rest of the parameter as value
+    #
+    # if [[ "${param:0:5}" == "--of=" ]]; then
+    #     knownParam=1
+    #     outFile="${param:5}"
+    # fi
+
+    #### Example: This Parameter is an image resolution, this can be found by
+    #### matching the parameter.
+    #
+    # if [[ "${param:0:2}" != "--" ]]; then
+    #     knownParam=1
+    #     match=$(expr match "$param" '\([0-9]*x[0-9]*\)')
+    #     if [[ "$match" != "$param" ]]; then
+    #         echo "ERROR: RES-pramatemer format must be WIDTHxHEIGHT (e.g. '1024x768'): '$param'" >&2
+    #         exitStatus=6
+    #     fi
+    #     
+    #     resolutions[${#resolutions[*]}]=$param
+    # fi
+
+
+    #### Example of a simple parameter without value
+    #
+    # if [[ "${param:0:9}" == "--verbose" ]]; then
+    #     knownParam=1
+    #     verbose=1
+    # fi
+
+
+
+    
+    # Short parameter
+    if [[ "$param" == "-h" ]]; then
+        knownParam=1
+        displayHelp=1
+    fi
+
+    # Long parameter
+    if [[ "$param" == "--help" ]]; then
+        knownParam=1
+        displayHelp=1
+    fi
+
+
+    # Short parameter
+    if [[ "$param" == "-v" ]]; then
+        knownParam=1
+        verbose=1
+    fi
+
+    # Long parameter
+    if [[ "$param" == "--verbose" ]]; then
+        knownParam=1
+        verbose=1
+    fi
+
+
+
+
+    # Short parameter
+    if [[ "$param" == "-f" ]]; then
+        shortParamName="layersFormat"
+        continue;
+    fi
+    if [[ "$shortParamName" == "layersFormat" ]]; then
+        knownParam=1
+        layersFormat="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:15}" == "--layersFormat=" ]]; then
+        knownParam=1
+        layersFormat="${param:15}"
+    fi
+    
+
+    # Short parameter
+    if [[ "$param" == "-o" ]]; then
+        shortParamName="output"
+        continue;
+    fi
+    if [[ "$shortParamName" == "output" ]]; then
+        knownParam=1
+        output="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:9}" == "--output=" ]]; then
+        knownParam=1
+        output="${param:9}"
+    fi
+    
+
+    # Short parameter
+    if [[ "$param" == "-d" ]]; then
+        shortParamName="outDir"
+        continue;
+    fi
+    if [[ "$shortParamName" == "outDir" ]]; then
+        knownParam=1
+        outDir="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:9}" == "--outDir=" ]]; then
+        knownParam=1
+        outDir="${param:9}"
+    fi
+
+
+    # Short parameter
+    if [[ "$param" == "-p" ]]; then
+        shortParamName="prefix"
+        continue;
+    fi
+    if [[ "$shortParamName" == "prefix" ]]; then
+        knownParam=1
+        prefix="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:9}" == "--prefix=" ]]; then
+        knownParam=1
+        prefix="${param:9}"
+    fi
+
+    # Short parameter
+    if [[ "$param" == "-l" ]]; then
+        shortParamName="ldr"
+        continue;
+    fi
+    if [[ "$shortParamName" == "ldr" ]]; then
+        knownParam=1
+        outLDR="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:6}" == "--ldr=" ]]; then
+        knownParam=1
+        outLDR="${param:6}"
+    fi
+
+
+    # Short parameter
+    if [[ "$param" == "-h" ]]; then
+        shortParamName="hdr"
+        continue;
+    fi
+    if [[ "$shortParamName" == "hdr" ]]; then
+        knownParam=1
+        outHDR="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:6}" == "--hdr=" ]]; then
+        knownParam=1
+        outHDR="${param:6}"
+    fi
+
+    # Short parameter
+    if [[ "$param" == "-a" ]]; then
+        shortParamName="layers"
+        continue;
+    fi
+    if [[ "$shortParamName" == "layers" ]]; then
+        knownParam=1
+        outLayers="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:9}" == "--layers=" ]]; then
+        knownParam=1
+        outLayers="${param:9}"
+    fi
+
+    # Short parameter
+    if [[ "$param" == "-t" ]]; then
+        shortParamName="tempDir"
+        continue;
+    fi
+    if [[ "$shortParamName" == "tempDir" ]]; then
+        knownParam=1
+        tmpDir="$param"
+    fi
+
+    # Long parameter
+    if [[ "${param:0:6}" == "--tmp=" ]]; then
+        knownParam=1
+        tmpDir="${param:6}"
+    fi
+
+
+
+    # Assume inputfile
+    if [[ -f "$param" ]]; then
+        knownParam=1
+        inFiles=("${inFiles[@]}" "$param")
+        
+        ext=${param##*.}
+        ext=${ext,,}
+        case "$ext" in
+            #### ADD EXTENSIONS TO THE FOLLOWING LINE (AND THE ONE WAY DOWN) IF UFRAW/DCRAW SUPPORTS THEM ####
+            "crw" | "cr2" | "dng" | "mrw" | "nef" | "raf" )
+                # If we have a raw file, one file is ok...
+                pseudoHDR=$(( pseudoHDR + 1 ))
+            ;;
+            
+        esac
+        
+    fi
+
+
+    shortParamName=""
+
+    # Check for unknown parameters
+    # Has to be at the end of this loop
+    if [[ $knownParam -eq 0 ]]; then
+        echo "ERROR: Unknown Parameter '$param'" >&2
+        exitStatus=2
+    fi
+done
+
+# Remove first (empty) array member
+unset inFiles[0]
+inFiles=("${inFiles[@]}")
+
+
+if [[ "$outDir" == "" ]]; then
+    outDir=$(dirname "${inFiles[1]}")
+fi
+
+
+if [[ "$prefix" == "" ]]; then
+    filename=$(basename "${inFiles[0]}")
+    # extension=${filename##*.}
+    # filename=${filename%.*}
+    prefix="${filename%.*}" 
+fi
+
+doLDR=0
+doHDR=0
+doLayers=0
+
+for ((i=0; i < ${#output}; i++)); do
+    mode=${output:i:1}
+    
+    if [[ "$mode" == "l" ]]; then
+        doLDR=1
+    fi
+    if [[ "$mode" == "h" ]]; then
+        doHDR=1
+    fi
+    if [[ "$mode" == "a" ]]; then
+        doLayers=1
+    fi
+    
+done
+
+
+
+if [[ "$outHDR" == "" ]]; then
+    outHDR="$prefix.hdr"
+fi
+if [[ "$outLDR" == "" ]]; then
+    outLDR="$prefix.ldr"
+fi
+if [[ "$outLayers" == "" ]]; then
+    outLayers="$prefix.layers"
+fi
+
+############################# End Parameter Check #############################
+
+
+############################## Begin Values Check #############################
+
+
+#### Example of checking for a value
+#
+# if [[ "$outFile" == "" ]]; then
+#     echo "ERROR: Obligatory Parameters not given" >&2
+#     echo "       Please provide an out-file (--of) parameters" >&2
+#     exitStatus=1
+# fi
+
+#### Example of checking for more than one value
+#
+# if [[ ${#resolutions[@]} -lt 2 ]]; then
+#     echo "ERROR: Not enough RES-parameters given" >&2
+#     echo "       Please provide at least two image resolutions" >&2
+#     exitStatus=3
+# fi
+
+
+if [[ displayHelp -eq 1 ]]; then
+  showHelp
+  exit 0
+fi
+
+if [[ "$outLDR" == "" ]]; then
+    echo "ERROR: Obligatory Parameter not given" >&2
+    echo "       Please provide an LDR output file prefix (--ol=) parameter" >&2
+    exitStatus=1
+fi
+
+if [[ "$pseudoHDR" == "0" && ${#inFiles[@]} -lt 3 ]]; then
+    echo "ERROR: Obligatory Parameters not given" >&2
+    echo "       Please provide al least two input images as parameters" >&2
+    exitStatus=1
+else 
+    if [[ "$pseudoHDR" != "0" ]]; then
+        output "Using pseudo HDR from $pseudoHDR Raw files..."
+    fi
+fi
+
+
+if [[ $exitStatus -ne 0 ]]; then
+    ## Code for debugging parameters
+    #echo "Parameters received:"
+    #x=0
+    #while [[ "$1" != "" ]]; do
+    #   let "x = $x + 1"
+    #   echo "$x: $1"
+    #   shift
+    #done
+
+    output ""
+    output "Use parameter --help for more information."
+    output ""
+    # showHelp
+    exit $exitStatus
+fi
+
+############################### End Values Check ##############################
+
+
+############################# Begin Actual Script #############################
+
+
+
+inputFiles=""
+for filename in "${inFiles[@]}"; do
+    ext=${filename##*.}
+    ext=${ext,,}        # Lowercase (needs bash >= 4.0)
+    name=$(basename "$filename")
+    name=${name%.*}
+    
+    outFile="$tmpDir/${cmd}_${pid}_$name.tiff"
+    
+    case "$ext" in
+        "tif" | "tiff" | "jpg" | "jpeg" | "png" )
+            # No conversion necessary        
+            inputFiles=("${inputFiles[@]}" "$filename")
+        ;;
+        
+        
+        #### ADD EXTENSIONS TO THE FOLLOWING LINE IF UFRAW/DCRAW SUPPORTS THEM ####
+        "crw" | "cr2" | "dng" | "mrw" | "nef" | "raf" )
+            echoIfVerbose "Converting input image \"$filename\"..."
+
+            
+            outFile2="$tmpDir/${cmd}_${pid}_${name}2.tiff"
+            outFile3="$tmpDir/${cmd}_${pid}_${name}3.tiff"
+            output "Converting raw to tiff..."
+            
+            # Use different exposures
+            ufraw-batch --exposure=0 --out-type=tiff --out-depth=16 --output="$outFile" --overwrite --silent "$filename"
+            ufraw-batch --exposure=2 --out-type=tiff --out-depth=16 --output="$outFile2" --overwrite --silent "$filename"
+            ufraw-batch --exposure=-2 --out-type=tiff --out-depth=16 --output="$outFile3" --overwrite --silent "$filename"
+            
+            if [[ "$?" == "0" ]]; then
+                inputFiles=("${inputFiles[@]}" "$outFile" "$outFile2" "$outFile3")
+            else
+                echo "Error converting file with ufraw: \"$filename\"" >&2
+            fi
+        ;;
+        
+        * )
+            echo "The following image does not seem to be supported as input: " >&2
+            echo "    \"$filename\"" >&2
+            echo "" >&2
+            echo "If you are sure the file type is supported by dcraw/ufraw, edit this" >&2
+            echo "script, else convert your images to tiff before using them." >&2
+            echo "" >&2
+        ;;
+        
+    esac
+done
+
+# Remove first (empty) array member
+unset inputFiles[0]
+inputFiles=("${inputFiles[@]}")
+
+echoIfVerbose "All input parameters seem to be ok. Starting work..."
+
+errors=0
+
+if [[ "$pseudoHDR" != "1" ]]; then
+    output "Align input images (this may take quite some time)..."
+    align_image_stack -i -C -c 16 -a "$tmpDir/$alignedPrefix" "${inputFiles[@]}" 1>/dev/null 2>>"$errorLog"
+    if [[ $? -gt 0 ]]; then 
+        errors=1 
+        echoIfVerbose "Errors occurred aligning the input images..."
+        endScript
+    fi
+fi
+
+echoIfVerbose "TODO: Ghosting step..."
+
+echo "Aligned Images: "
+ls "$tmpDir/$alignedPrefix"*
+
+if [[ "$doHDR" == "1" && "$outHDR" != "" ]]; then
+    output "Save HDR file from aligned images..."
+    pfsin "$tmpDir/$alignedPrefix"* | pfsoutexr --fix-halfmax "$outDir/$outHDR.exr" 1>/dev/null 2>>"$errorLog"
+    if [[ $? -gt 0 ]]; then 
+        errors=1 
+        echoIfVerbose "Errors occurred creating the HDR image..."
+    fi
+fi
+
+if [[ "$doLayers" == "1" && "$outLayers" != "" ]]; then
+    output "Save layered file from aligned images..."
+
+    # Helper, emulating else-if
+    layersDone=0
+
+    if [[ $layersDone -eq 0 && "$layersFormat" == "all" ]]; then
+    
+        inFilename="$outDir/$outLayers.psd"
+        outFilename="$outDir/$outLayers.xcf"
+        outFileBasename="$outLayers.xcf"
+        
+        echoIfVerbose "Exporting in all supported layered formats... $outFilename"
+       
+        convert "$tmpDir/$alignedPrefix"* -layers composite "$inFilename" 1>/dev/null 2>>"$errorLog"
+#        if [[ $? -gt 0 ]]; then 
+#            errors=1 
+#            echoIfVerbose "Errors occurred creating the layered image..."
+#        fi
+        gimp -i -b "( let* ((image 0) (inFile \"$inFilename\") (outFile ) ) (set! image (car (file-psd-load 1 inFile inFile))) (gimp-xcf-save 0 image image \"$outFilename\" \"$outFileBasename\") )" -b '(gimp-quit 0)'  1>/dev/null 2>>"$errorLog"
+        if [[ $? -gt 0 ]]; then 
+            errors=1 
+            echoIfVerbose "Errors occurred creating the layered image..."
+        fi
+
+        layersDone=1
+    fi
+    
+    if [[ $layersDone -eq 0 && "$layersFormat" == "psd" ]]; then
+        outFilename="$outDir/$outLayers.psd"
+
+        echoIfVerbose "Exporting in PSD layered format... $outFilename"
+
+        convert "$tmpDir/$alignedPrefix"* -layers composite "$outFilename" 1>/dev/null 2>>"$errorLog"
+        if [[ $? -gt 0 ]]; then 
+            errors=1 
+            echoIfVerbose "Errors occurred creating the layered image..."
+        fi
+
+        layersDone=1
+    fi
+    
+    if [[ $layersDone -eq 0 ]]; then  # dfault: xcf (gimp)
+
+        inFilename="$tmpDir/$layersPrefix.psd"
+        outFilename="$outDir/$outLayers.xcf"
+        outFileBasename="$outLayers.xcf"
+
+        echoIfVerbose "Exporting in XCF layered format... $outFilename"
+        echoIfVerbose "Layer files:" `ls $tmpDir/$alignedPrefix*`
+
+        convert "$tmpDir/$alignedPrefix"* -layers composite "$inFilename" 1>/dev/null 2>>"$errorLog"
+#        if [[ $? -gt 0 ]]; then 
+#            errors=1 
+#            echoIfVerbose "Errors occurred creating the layered image..."
+#        fi
+        gimp -i -b "( let* ((image 0) (inFile \"$inFilename\") (outFile ) ) (set! image (car (file-psd-load 1 inFile inFile))) (gimp-xcf-save 0 image image \"$outFilename\" \"$outFileBasename\") )" -b '(gimp-quit 0)'  1>/dev/null 2>>"$errorLog"
+        if [[ $? -gt 0 ]]; then 
+            errors=1 
+            echoIfVerbose "Errors occurred creating the layered image..."
+        fi
+        rm -f "$inFilename"
+    fi
+fi
+
+if [[ "$doLDR" == "1" && "$outLDR" != "" ]]; then
+    output "Save LDR file from aligned images..."
+    enfuse-mp --output="$outDir/$outLDR.jpg" "$tmpDir/$alignedPrefix"* 1>/dev/null 2>>"$errorLog"
+    if [[ $? -gt 0 ]]; then 
+        errors=1 
+        echoIfVerbose "Errors occurred creating the LDR image..."
+    fi
+fi
+
+output "Delete aligned temporary images..."
+rm -f "$tmpDir/$alignedPrefix"* 1>/dev/null 2>>"$errorLog"
+if [[ $? -gt 0 ]]; then 
+    errors=1 
+    echoIfVerbose "Could not delete the temporary aligned images..."
+fi
+
+endScript
+
+
+
+
+############################## End Actual Script ##############################
+
+
+
+#### Useful code examples:
+
+# # $IFS must be set to newline so a space is not interpreted as separator for
+# # the files returned by the find-command
+# IFS=$'\n' 
+
+
+
+

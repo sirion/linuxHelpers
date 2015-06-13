@@ -1,0 +1,46 @@
+#! /bin/bash
+
+if [[ ! -d "$1" ]]; then
+  echo "Given argument is not a directory" >&2
+  exit 1
+fi
+
+cd "$1"
+
+shopt -s extglob
+
+toLower *.[jJ][pP]?([eE]*)[gG]?(.[pP][pP]3) 2>&1 >/dev/null # All from .jpg to .JPEG.pp3
+toLower *.[sS][hH]                   2>&1 >/dev/null # MagickLantern HDR scripts
+
+# Now start the reordering...
+numVideo=$(ls -1U *.[mM][oOpP][vV4] | wc -l)
+numJpeg=$(ls -1U *.[jJ][pP]?([eE]*)[gG] | wc -l)
+
+
+if [[ $numJpeg > 0 ]]; then 
+  if [[ ! -d "jpg" ]]; then 
+    mkdir "jpg"
+  fi
+  
+  mv -t jpg/ *.[jJ][pP]?([eE]*)[gG]?(.[pP][pP]3) 2>&1 # All from .jpg to .JPEG.pp3
+  mv -t jpg/ *.[sS][hH]                   2>&1 >/dev/null # MagickLantern HDR scripts
+fi
+
+if [[ $numVideo > 0 ]]; then 
+  if [[ ! -d "video" ]]; then 
+    mkdir "video"
+  fi
+
+  mv -t video/ *.[mM][oOpP][vV4] 2>&1 >/dev/null # .mov and .mp4 - would also get .mo4 or .mpv
+  mv -t video/ *.[lL][oO][gG]    2>&1 >/dev/null # MagickLantern video logs     
+fi
+
+# Rename all files to their creation date
+exiftool '-filename<CreateDate' -d %Y-%m-%d_%H-%M-%S-%%c.%%le -r -ext "*" .
+
+# Remove trailing "-" for pictures without extra number
+rename "s/-\.([^\.]*)$/.\$1/" *
+rename "s/-\.([^\.]*)$/.\$1/" jpg/*
+
+
+

@@ -1,0 +1,149 @@
+#! /bin/bash
+
+helpMessage() {
+    echo ""
+    echo "<========================= Sirions backupDirectoy Script =========================>"
+    echo ""
+    echo "usage: backupDirectory soureDirectory targetDirectory [ backupPrefix [ numberOfBackupsToKeep ] ] "
+    echo ""
+    echo "Parameters:"
+    echo "    - soureDirectory"
+    echo "      The directory that schould be backed up to the target location"
+    echo ""
+    echo "    - targetDirectory"
+    echo "      The target location where all backups are stored in seperate folders which end"
+    echo "      on the current date and time, e.g. '2007-08-14-14-25'."
+    echo ""
+    echo "    - backupPrefix (optional)"
+    echo "      The prefix that is prepended to every backup-folder. If the prefix is"
+    echo "      'whatever', the folders will be named 'whateverYYYY-MM-DD-HH-mm',"
+    echo "      e.g. 'whatever2007-08-14-14-25'"
+    echo "      Default: 'backup.'"
+    echo ""
+    echo "    - numberOfBackupsToKeep (optional)"
+    echo "      The number of backups that should be kept. If set to 0 all backups will be "
+    echo "      kept."
+    echo "      Default: 0"
+    echo "      !!! In this version only one backup will be deleted per backup creation,"
+    echo "      !!! the absolute number of backups won't decrease if there are already"
+    echo "      !!! more than that."
+    echo ""
+}
+
+# Configuration replaced by Parameters
+if [ ! -d "$1" ]; then
+    echo "Source directory does not exist. ($1)"
+    helpMessage
+    exit 1;
+fi
+sourceDir=$1
+
+tmpDestRoot=$(dirname "$2")
+tmpDestDir=$(basename "$2")
+if [[ "$2" == "" || ! -d "$tmpDestRoot" ]]; then
+    echo "Target directory does not exist. ($2)"
+    helpMessage
+    exit 2;
+fi
+if [ ! -d "$2" ]; then
+	if
+        mkdir "$2"
+    then
+        echo "Target directory created..."
+    else
+        echo "Could not create target directory ($2)"
+        helpMessage
+        exit 10
+    fi
+fi
+destRoot=$tmpDestRoot
+destDir=$tmpDestDir
+
+destPrefix="backup."
+if [ "$3" != "" ]; then
+	destPrefix=$3
+fi
+
+numberOfBackups=0
+if [ $1 != "" ]; then
+	numberOfBackups=$4
+#elif [[ "$4" != "" ]]; then
+#	echo "The Number of kept backups must be numeric"
+#    helpMessage
+#    exit 3
+fi
+
+
+if [ ! -d "$destRoot/$destDir" ]; then
+    echo "Destination directory ($destRoot/$destDir) does not exist."
+    helpMessage
+    exit 11
+fi
+
+
+# $IFS must be set to newline so a space is not interpreted as separator for
+# the files returned by the find-command
+IFS=$'\n' 
+
+backupDirs=()
+backupDirs=($(ls -1d "$destRoot/$destDir/$destPrefix"* | sort -n -t. -k 1))
+
+IFS=$' \t\n'
+
+
+#echo "Moving old backups..."
+#for ((x=1; $x < ${#backupDirs[*]}; $x++)); do
+#    lastDir=$activeDir
+#    activeDir="$destRoot/$destDir/${backupDirs[$x]}"
+#    echo /bin/mv $activeDir $lastDir
+#done
+
+lastEntry=0
+lastDir=""
+
+if [[ ${#backupDirs[*]} != 0 ]]; then
+    lastEntry="$[${#backupDirs[*]} - 1]"
+    lastDir="${backupDirs[$lastEntry]}"
+fi
+
+
+
+echo "Creating current backup..."
+activeDir="$destRoot/$destDir/${destPrefix}$(date '+%Y-%m-%d-%H-%M-%S')"
+/bin/mkdir "$activeDir"
+
+if [ "$lastDir" == "" ]; then
+    echo rsync -v -a "$sourceDir" "$activeDir"
+    rsync -v -a "$sourceDir" "$activeDir"
+else
+    echo rsync -v -a --link-dest="$lastDir" "$sourceDir" "$activeDir"
+    rsync -v -a --link-dest="$lastDir" "$sourceDir" "$activeDir"
+fi
+
+
+exit 
+
+
+
+if [[ "$numberOfBackups" != "0" && "${#backupDirs[*]}" -ge "$numberOfBackups" ]]; then
+    activeDir="${backupDirs[0]}"
+    testDir="$destRoot/$destDir/"
+    if [ ${#activeDir} -le ${#testDir} ]; then
+        echo "Error: There was an error finding the last backup."
+        helpMessage
+        exit 12
+    fi
+    if [ "${activeDir:0:${#testDir}}" != "$testDir" ]; then
+        echo "Error: Directory to be deleted is no subdirectory of the Destination (Hacking attempt?)."
+        echo "  $activeDir"
+        echo "      not in"
+        echo "  $testDir"
+        helpMessage
+        exit 13	
+    fi
+
+    echo "Deleting oldest backup directory..."
+    /bin/rm -rf $activeDir
+fi
+
+echo "Done!"

@@ -1,0 +1,41 @@
+#!/bin/bash
+
+if [[ "$1" != "yesiknow" ]]; then
+  echo "Please make sure you know what this script does. If you are sure, start it"
+  echo " with \"yesiknow\" as command line argument."
+  echo ""
+  echo " - You must be in the photography-shooting-folder."
+  echo " - There has to be an original-folder containing the raw-images and the"
+  echo "   jpegs in a subfolder called jpg."
+  echo " - There has to be a selected-folder with the selected jpegs"
+  echo ""
+  echo "The script then moves all raws and jpegs in the original folder that have a"
+  echo "jpeg-equivalent in the selected-folder in to a selected-subfolder in the"
+  echo "original folder and the others into a rejected-subfolder."
+  exit 255
+fi
+
+if [[ ! -d "original/rejected/jpg" ]]; then
+  mkdir -p "original/rejected/jpg"
+fi
+
+if [[ ! -d "original/selected/jpg" ]]; then
+  mkdir -p "original/selected/jpg"
+fi
+
+for i in original/*.cr2; do 
+  file=$(basename "$i")
+  file="${file%.*}"
+
+  if [[ -f "selected/${file}.jpg" ]]; then 
+    echo "Moving selected: $file" 
+    mv "original/${file}.cr2" "original/selected/${file}.cr2"
+    mv "original/jpg/${file}.jpg" "original/selected/jpg/${file}.jpg"
+  else
+    echo "Moving rejected: $file" 
+    mv "original/${file}.cr2" "original/rejected/${file}.cr2"
+    mv "original/jpg/${file}.jpg" "original/rejected/jpg/${file}.jpg"
+  fi
+done
+
+rmdir --ignore-fail-on-non-empty "original/jpg/"

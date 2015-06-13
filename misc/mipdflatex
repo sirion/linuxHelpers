@@ -1,0 +1,247 @@
+#! /bin/bash
+
+############################ BEGIN function declarations ###########################
+
+function updateBibliography {
+    latex -shell-escape -interaction=nonstopmode "$name"
+    latex -shell-escape -interaction=nonstopmode "$name"
+
+    bibtex "$name.aux" >&2
+
+    latex -shell-escape -interaction=nonstopmode "$name"
+}
+
+function updateIndex {
+    latex -shell-escape -interaction=nonstopmode "$name"
+    latex -shell-escape -interaction=nonstopmode "$name"
+    
+    makeindex "$name.glo" -s "$name.ist" -t "$name.glg" -o "$name.gls"
+
+    if [[ -f "$name.idx" ]]; then
+        makeindex "$name.idx"
+    fi
+
+    latex -shell-escape -interaction=nonstopmode "$name"
+
+    makeindex "$name.glo" -s "$name.ist" -t "$name.glg" -o "$name.gls"
+
+    if [[ -f "$name.idx" ]]; then
+        makeindex "$name.idx"
+    fi
+
+    latex -shell-escape -interaction=nonstopmode "$name"
+}
+
+function toPdf {
+    pdflatex -shell-escape -synctex=1 -interaction=nonstopmode "$name.tex"
+}
+
+function showPdf {
+    evince "$name.pdf" &>/dev/null &
+}
+
+function endScript {
+    cd "$oldDir"
+    exit $1
+}
+
+############################# END function declarations ############################
+
+originalParams=("$@")
+
+# Check for options
+action="full"
+texmakerWorkarounds=0
+startBackground=0
+
+while [[ "${1:0:1}" == "-" ]]; do
+    # First parameter is an option
+
+    # Action parameter
+    if [[ "$1" == "-a" ]]; then
+        action="$2"    
+        shift 2
+        continue
+    fi
+
+    if [[ "${1:0:9}" == "--action=" ]]; then
+        action="${1:9}"    
+        shift 1
+        continue
+    fi
+    
+    # Background parameter
+    if [[ "$1" == "-b" ]]; then
+        startBackground=1
+        shift 1
+        continue
+    fi
+
+    if [[ "$1" == "--backgound" ]]; then
+        # Start detached from console
+        startBackground=1
+        shift 1
+        continue
+    fi
+    
+    
+    # Textmaker Log workaround
+    if [[ "$1" == "-t" ]]; then
+        texmakerWorkarounds=1
+        shift 1
+        continue
+    fi
+
+    if [[ "$1" == "-texmaker" ]]; then
+        texmakerWorkarounds=1
+        shift 1
+        continue
+    fi
+
+    if [[ "$1" == "--texmaker" ]]; then
+        texmakerWorkarounds=1
+        shift 1
+        continue
+    fi
+
+    if [[ "${1}" == "--texmaker=true" ]]; then
+        texmakerWorkarounds=1
+        shift 1
+        continue
+    fi
+    if [[ "${1}" == "--texmaker=false" ]]; then
+        texmakerWorkarounds=0 # Ignore that is
+        shift 1
+        continue
+    fi
+    
+    
+    
+    # Unknown option (remember to always use continue above)
+    echo "Error: Unknown option: $1" >&2
+    exit 9
+done
+
+
+if [[ "$startBackground" == "1" ]]; then
+    # Start detached from console
+    newParams=()
+    for p in "${originalParams[@]}"; do
+        # dont use background-parameter again - endless loop
+        if [[ "$p" != "-b" && "$p" != "--background" ]]; then
+            newParams=("${newParams[@]}" "$p")
+#        else
+#            echo "Ignoring: $p"
+        fi
+    done
+    
+    $0 "${newParams[@]}" > /dev/null 2> /dev/null  & 
+    exit
+fi
+
+
+
+# Allow parameter to be name of the .tex file with or without extension
+input="$1"
+ext="${input##*.}"
+
+if [[ "$ext" == "tex" ]]; then
+    # full filename including extension given
+    # ext="$ext" # haha!
+    file="${input##*/}"
+    path="${input%/*}"
+    name="${file%%.*}"
+    if [[ "$path" == "$file" ]]; then
+        # This happens when there is no "/" in the parameter
+        path="."
+    fi
+else
+    ext=""
+    name="${input##*/}"
+    file="${input##*/}.tex"
+    path="${input%/*}"
+    if [[ "$path" == "$name" ]]; then
+        # This happens when there is no "/" in the parameter
+        path="."
+    fi
+fi
+
+
+#echo "Params: " "$originalParams" >&2
+#echo "" >&2
+#echo -e "Path:\t$path\nFile:\t$file\nName:\t$name\nExt:\t$ext\n" >&2
+#exit 10
+
+
+# Go into target directory
+if [[ ! -d "$path" ]]; then
+    echo "Error: Directory does not exist ($path)" >&2
+    exit 8
+fi
+
+oldDir="$PWD"
+cd "$path"
+
+# Check if tex file exits
+if [[ ! -f "$file" ]]; then
+    echo "Error: First parameter must be the name of the tex file." >&2
+    echo "       \"$file\" not found." >&2
+    endScript 1
+fi
+
+
+# Check for or create out directory
+if [[ ! -d "out" ]]; then
+  mkdir "out" &>/dev/null
+fi
+  
+if [[ ! -d "out" ]]; then
+    echo "Error: Could not create out-directory." >&2
+    endScript 2
+fi  
+
+testFile="out/.mipdflatex_touch_temp"
+touch "$testFile"
+if [[ ! -f "$testFile" ]]; then
+    echo "Error: Could not write to out-directory." >&2
+    endScript 3
+fi  
+rm -f "$testFile"
+
+# Logfile workaround for texmaker
+if [[ "$texmakerWorkarounds" == "1" ]]; then
+    if [[ ! -f "$name.log" ]]; then
+        ln -s "out/$name.log"
+    fi
+fi
+
+
+
+
+
+
+if [[ "$action" == "full" ]]; then
+    updateBibliography
+    updateIndex
+    toPdf
+    showPdf
+fi
+
+if [[ "$action" == "quick" ]]; then
+    toPdf
+    showPdf
+fi
+
+if [[ "$action" == "bib" ]]; then
+    updateIndex
+    toPdf
+    showPdf
+fi
+
+if [[ "$action" == "index" ]]; then
+    updateIndex
+    toPdf
+    showPdf
+fi
+
+endScript 0

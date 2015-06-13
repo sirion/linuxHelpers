@@ -1,0 +1,8 @@
+#! /bin/bash
+for i in "$@"; do 
+    lower=`echo "$i" | tr '[A-Z]' '[a-z]'` 
+    
+    if [[ "$i" != "$lower" ]]; then
+        mv "$i" "$lower"
+    fi
+done

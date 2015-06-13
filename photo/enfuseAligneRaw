@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+cmd=$(basename "$0")
+pid=$$
+tmpDir="/tmp"
+filePrefix="${tmpDir}/${cmd}_${pid}_"
+
+toAlign=""
+
+
+function enfuseRaw {
+    rawFile="$1"
+    enfusedFile="$2"
+        
+    tempFile1="${filePrefix}raw1.tiff"
+    tempFile2="${filePrefix}raw2.tiff"
+    tempFile3="${filePrefix}raw3.tiff"
+    
+    ufraw-batch --exposure=0 --out-type=tiff --out-depth=16 --output="$tempFile1" --overwrite --silent "$rawFile"
+    ufraw-batch --exposure=2 --out-type=tiff --out-depth=16 --output="$tempFile2" --overwrite --silent "$rawFile"
+    ufraw-batch --exposure=-2 --out-type=tiff --out-depth=16 --output="$tempFile3" --overwrite --silent "$rawFile"
+    
+    enfuse -d 16 -o "$enfusedFile" "$tempFile1" "$tempFile2" "$tempFile3"
+
+    rm "$tempFile1"
+    rm "$tempFile2"
+    rm "$tempFile3"
+}
+
+
+idx=0
+for file in "$@"; do
+    if [[ "${file:0:1}" == "-" ]]; then
+        continue
+    fi
+
+    idx=$(( idx + 1 ))
+    enfused="${filePrefix}enfused_${idx}.tiff"
+    
+    echo "Enfusing raw file \"$file\" to \"$enfused\""
+    enfuseRaw "$file" "$enfused"
+    toAlign=( "${toAlign[@]}" "$enfused" )
+        
+done
+
+
+# Remove first (dummy) entry 
+unset toAlign[0];
+toAlign=( "${toAlign[@]}" )
+
+out=${file%.*}
+
+if [[ ${#toAlign[@]} == 1 ]]; then
+    ## Only narrow channels to 8 bit
+    enfuse -d 8 -o "${out}_enfused.tiff" "${toAlign[@]}"
+    rm "${toAlign[@]}"
+else
+    echo "Aligning Exposures: " "${toAlign[@]}"
+
+    align_image_stack -p "${out}.pto" -o "${out}.hdr" -a "${filePrefix}aligned_" -C "${toAlign[@]}"
+    enfuse -d 8 -o "${out}_enfused.tiff" "${filePrefix}aligned_"*
+
+    rm "${toAlign[@]}"
+    rm "${filePrefix}aligned_"*
+fi
+
+

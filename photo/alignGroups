@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+cmd=$(basename "$0")
+groupSize=3
+
+if [[ $# -lt 1 ]]; then
+  echo "Not enough parameters given"
+  exit 1
+fi
+
+group=()
+for file in "$@"; do
+  # Add another picture to the group
+  group=( "${group[@]}" "$file" )
+  
+  if [[ ${#group[@]} == $groupSize ]]; then
+    echo "Aligning ${group[@]}:"
+    echo "   ==> out_${group[0]}.hdr"
+    align_image_stack -o "out_${group[0]}.hdr" -C "${group[@]}"
+    group=()
+  fi
+done
+

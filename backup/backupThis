@@ -1,0 +1,35 @@
+#!/bin/bash
+backupTime=`date "+%Y-%m-%d-%H-%M-%S"`
+backupDir=~/backup
+if [ ! -d $backupDir ]; then
+  mkdir $backupDir
+fi
+
+# Check for password file
+option=""
+passFile="$(dirname "$0")/backupPassword.dat"
+if [[ -f "$passFile" ]]; then
+    option=" -p$(cat "$passFile")"
+fi
+
+until [ -z "$1" ]  # Until all parameters are used up . . .
+do
+  backupName=`basename "$1"`
+  backupPath="$backupDir/$backupTime $backupName"
+
+  doIt=1
+  if [ -f "$1" ]; then
+    echo "Backing up file $1..."
+    7z a $option -mx=9 -m0=lzma2 -mmt=on -t7z -mfb=258 -md=128m -ms=on "$backupPath.7z" "$1"
+  elif [ -d "$1" ]; then
+    echo "Backing up directory $1..."
+    tar -c -h -f - "$1" | 7z a $option -mx=9 -m0=lzma2 -mmt=on -t7z -mfb=128 -md=64m -ms=on -si "$backupPath.tar.7z"
+  else
+    echo "File \"$1\" does not exist or is no regular file."
+    doIt=0
+  fi
+
+
+  shift
+done
+
