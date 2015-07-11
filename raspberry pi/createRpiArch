@@ -1,0 +1,63 @@
+#!/bin/bash
+
+if [[ "$1" == "" ]]; then
+  echo "Please provide a device to write on"
+  exit
+fi
+
+echo "Erasing first sectors of new table..."
+dd if=/dev/zero of=$1 bs=512 count=1 > /dev/null 2>&1
+sleep 5s
+sync
+
+echo "Creating partition new table..."
+sfdisk $1 > /dev/null 2>&1 <<EOF
+unit: sectors
+
+/dev/sdd1 : start=     2048, size=   204800, Id= c
+/dev/sdd2 : start=   206848, size= 62127104, Id=83
+/dev/sdd3 : start=        0, size=        0, Id= 0
+/dev/sdd4 : start=        0, size=        0, Id= 0
+EOF
+
+sleep 5s
+sync
+
+echo "Creating vfat filesystem on first partition"
+mkfs.vfat "${1}1" > /dev/null 2>&1
+mkdir -p boot > /dev/null 2>&1
+sync
+sleep 5s
+mount "${1}1" boot > /dev/null 2>&1
+sleep 5s
+
+echo "Creating ext4 filesystem on second partition"
+mkfs.ext4 "${1}2" > /dev/null 2>&1
+mkdir -p root
+sync
+sleep 5s
+mount "${1}2" root > /dev/null 2>&1
+sleep 5s
+
+if [[ ! -f ArchLinuxARM-rpi-latest.tar.gz ]]; then
+  echo "Downloading latest Arch image..."
+  wget http://archlinuxarm.org/os/ArchLinuxARM-rpi-latest.tar.gz > /dev/null 2>&1
+fi
+
+echo "Extracting Arch image..."
+bsdtar -xpf ArchLinuxARM-rpi-latest.tar.gz -C root > /dev/null 2>&1
+sleep 5s
+sync
+
+sleep 5s
+echo "Moving boot to first partition"
+mv root/boot/* boot > /dev/null 2>&1
+
+sleep 5s
+sync
+
+sleep 5s
+umount boot root > /dev/null 2>&1
+
+sync
+echo "Done."

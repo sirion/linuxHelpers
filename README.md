@@ -71,6 +71,14 @@ A bunch of assorted scripts that make my life easier on the linux console.
 
  Simple script that automates creating PDFs from my latex sources.
 
+ ### Raspberry Pi
+
+ * **createRpiArch**
+
+ An automated version of the steps needed to create an SD-Card that boots arch linux on a raspberry pi. The original steps can be found at http://archlinuxarm.org/platforms/armv6/raspberry-pi
+ This script should to be run in an empty directory as it downloads an archive and creates two folders ("boot" and "root").
+ **Warning:** This script must be run as root makes no additional checks, if you give the wrong device argument to it, it will destroy whatever is on the given disk.
+
 ### Template
 
  * **bashScriptTemplate**
