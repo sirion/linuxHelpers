@@ -23,7 +23,7 @@ A bunch of assorted scripts that make my life easier on the linux console.
 
  * **applyWatermark**
 
- Adds a watermark picture stored as base64 inside the script to the given files.  
+ Adds a watermark picture stored as base64 inside the script to the given files.
  *Warning: With default configuration options this overwrites the original file.*
 
  * **createMultiDesktopWallpaper**
@@ -63,6 +63,14 @@ A bunch of assorted scripts that make my life easier on the linux console.
  * **toLower**
 
  Simply renames the given files so that only lower case characters are used.
+
+### Logging
+
+* **timeit**
+
+Enrich program output with timing information.
+Every line of a program's output is prefixed with the current timestamp when started via timeit.
+Usage: `timeit programm [arguments]`
 
 
 ### Misc
