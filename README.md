@@ -78,6 +78,8 @@ Usage: `timeit programm [arguments]`
  * **mipdflatext**
 
  Simple script that automates creating PDFs from my latex sources.
+* **mkpass**  
+Creates a random password
 
  ### Raspberry Pi
 
