@@ -65,7 +65,7 @@ if [ "$3" != "" ]; then
 fi
 
 numberOfBackups=0
-if [ $1 != "" ]; then
+if [ "$1" != "" ]; then
 	numberOfBackups=$4
 #elif [[ "$4" != "" ]]; then
 #	echo "The Number of kept backups must be numeric"
@@ -143,7 +143,7 @@ if [[ "$numberOfBackups" != "0" && "${#backupDirs[*]}" -ge "$numberOfBackups" ]]
     fi
 
     echo "Deleting oldest backup directory..."
-    /bin/rm -rf $activeDir
+    /bin/rm -rf "$activeDir"
 fi
 
 echo "Done!"

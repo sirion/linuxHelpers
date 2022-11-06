@@ -44,7 +44,7 @@ EOT
 
 scriptOptionalParameters=$(cat <<EOT
 LIST OF ALL PARAMETERS THAT MAY BUT DO NOT HAVE TO BE PROVIDED.
-SEE $obligatoryParameters ABOVE
+SEE \$scriptObligatoryParameters ABOVE
 EOT
 )
 
@@ -102,7 +102,7 @@ function showHelp {
 # Used to output certain information only in verbose-mode
 function echoIfVerbose {
     if [[ $verbose -eq 1 ]]; then
-        echo $@
+        echo "$@"
     fi
 }
 
@@ -123,7 +123,7 @@ PATH=$PATH:$(dirname "$0")
 # Check for required programs before starting 
 requiredOk=1
 for prg in "${scriptRequiredPrograms[@]}"; do
-    path=$(which $prg)
+    path=$(which "$prg")
     if [[ "" == "$path" ]]; then
         requiredOk=0
         echo "ERROR: Required program '$prg' not found" >&2
