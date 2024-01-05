@@ -1,8 +1,13 @@
 # Linux Helpers
 
-A bunch of assorted scripts that make my life easier on the linux console.
+A bunch of assorted programs and scripts that make my life easier.
 
 ## List of available Helpers
+
+### System
+
+* **cpu_mode**
+ Change CPU governor for ll cores using the command line. Example: `cpu_mode powersave`. [cpu_mode](system/cpu_mode/README.md) can switch between lists of governors.
 
 ### Backup
 
