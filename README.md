@@ -7,7 +7,7 @@ A bunch of assorted programs and scripts that make my life easier.
 ### System
 
 * **[cpu_mode](system/cpu_mode)**  
- Change CPU governor for ll cores using the command line. Example: `cpu_mode powersave`. [cpu_mode](system/cpu_mode) can switch between lists of governors.
+ Change CPU governor for ll cores using the command line. Example: `cpu_mode powersave`. [cpu_mode](system/cpu_mode) can switch between lists of governors.  Comes with its own [XFCE4-panel plugin](system/cpu_mode/xfce4-plugin-cpu-mode/).
 
 ### Backup
 
