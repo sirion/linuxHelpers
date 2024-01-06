@@ -1,0 +1,10 @@
+[Xfce Panel]
+Type=X-XFCE-PanelPlugin
+Encoding=UTF-8
+Name=CPU Mode
+Comment=Quickly Switch CPU Governor
+Icon=indicator-cpufreq-75
+X-XFCE-Module=cpu_mode
+X-XFCE-Module-Path=/usr/lib/xfce4/panel/plugins/
+X-XFCE-Internal=false
+X-XFCE-API=2.0
