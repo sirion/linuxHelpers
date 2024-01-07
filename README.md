@@ -1,6 +1,7 @@
 # Linux Helpers
 
 A bunch of assorted programs and scripts that make my life easier.
+Mostly bash scripts, some written in go or c.
 
 ## List of available Helpers
 

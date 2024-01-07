@@ -17,20 +17,23 @@ typedef struct
     GtkWidget *button_powersave;
     GtkWidget *button_schedutil;
 
+    GtkWidget *tooltip;
+
 } CpuModePlugin;
 
-static void cpu_power_plugin(XfcePanelPlugin *plugin);
-static void cpu_power_free(XfcePanelPlugin *plugin, CpuModePlugin *sample);
+static void cpu_mode_plugin_create(XfcePanelPlugin *plugin);
+static void cpu_mode_free(XfcePanelPlugin *plugin, CpuModePlugin *sample);
+static gboolean cpu_mode_tooltip( GtkWidget *widget, gint x, gint y, gboolean keyboard, GtkTooltip * tooltip, CpuModePlugin *cpu_mode_plugin);
 void *updateThread(void *vArgP);
 gboolean on_click(GtkWidget *widget, GdkEventButton *event);
 
-XFCE_PANEL_PLUGIN_REGISTER(cpu_power_plugin);
+XFCE_PANEL_PLUGIN_REGISTER(cpu_mode_plugin_create);
 
 CpuModePlugin *cpu_mode_plugin;
 gboolean update_active = TRUE;
 pthread_t update_thread_id;
 
-static void cpu_power_plugin(XfcePanelPlugin *plugin)
+static void cpu_mode_plugin_create(XfcePanelPlugin *plugin)
 {
 
     cpu_mode_plugin = g_slice_new0(CpuModePlugin);
@@ -43,10 +46,17 @@ static void cpu_power_plugin(XfcePanelPlugin *plugin)
     g_signal_connect(cpu_mode_plugin->button_schedutil, "button-press-event", G_CALLBACK(on_click), NULL);
 
 
+
     cpu_mode_plugin->hvbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 1);
     gtk_container_add(GTK_CONTAINER(cpu_mode_plugin->hvbox), cpu_mode_plugin->button_powersave);
     gtk_container_add(GTK_CONTAINER(cpu_mode_plugin->hvbox), cpu_mode_plugin->button_schedutil);
     gtk_widget_show(cpu_mode_plugin->hvbox);
+
+
+    gtk_widget_set_has_tooltip( cpu_mode_plugin->hvbox, TRUE);
+    cpu_mode_plugin->tooltip = gtk_label_new( NULL );
+	g_object_ref( cpu_mode_plugin->tooltip );
+	g_signal_connect( cpu_mode_plugin->hvbox, "query-tooltip", G_CALLBACK( cpu_mode_tooltip ), cpu_mode_plugin );
 
     gtk_container_add(GTK_CONTAINER(plugin), cpu_mode_plugin->hvbox);
     xfce_panel_plugin_add_action_widget(plugin, cpu_mode_plugin->hvbox);
@@ -55,7 +65,7 @@ static void cpu_power_plugin(XfcePanelPlugin *plugin)
     pthread_create(&update_thread_id, NULL, updateThread, NULL);
     
 
-    g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(cpu_power_free), cpu_mode_plugin);
+    g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(cpu_mode_free), cpu_mode_plugin);
     xfce_panel_plugin_set_expand(XFCE_PANEL_PLUGIN(plugin), FALSE);
 }
 
@@ -101,9 +111,7 @@ void updateLabel()
 {
     char *gov = read_cpu_governor();
 
-    // char *str = (char *)malloc(80);
-    // sprintf(str, " %s ", gov);
-    // gtk_label_set_text(GTK_LABEL(cpu_mode_plugin->label), str);
+    gtk_label_set_text(GTK_LABEL(cpu_mode_plugin->tooltip), gov);
 
     if (strcmp(gov, "powersave") == 0)
     {
@@ -140,15 +148,20 @@ gboolean on_click(GtkWidget *widget, GdkEventButton *event)
     return FALSE;
 }
 
-static void cpu_power_free(XfcePanelPlugin *plugin, CpuModePlugin *cpu_mode_plugin)
+static void cpu_mode_free(XfcePanelPlugin *plugin, CpuModePlugin *cpu_mode_plugin)
 {
     update_active = FALSE;
     pthread_join(update_thread_id, NULL);
-
 
     gtk_widget_destroy(cpu_mode_plugin->hvbox);
     gtk_widget_destroy((GtkWidget *)cpu_mode_plugin->button_powersave);
     gtk_widget_destroy((GtkWidget *)cpu_mode_plugin->button_schedutil);
 
     g_slice_free(CpuModePlugin, cpu_mode_plugin);
+}
+
+static gboolean cpu_mode_tooltip( GtkWidget *widget, gint x, gint y, gboolean keyboard, GtkTooltip * tooltip, CpuModePlugin *cpu_mode_plugin)
+{
+	gtk_tooltip_set_custom( tooltip, cpu_mode_plugin->tooltip );
+	return TRUE;
 }
