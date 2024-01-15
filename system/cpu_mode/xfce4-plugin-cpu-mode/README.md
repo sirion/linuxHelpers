@@ -37,9 +37,9 @@ PANEL_DEBUG=1 xfce4-panel
 
 ### TODOs
 
-- Switches only between hardcoded governors "schedutil" and "powersave"
-- Icons might not be available on system
+- May not work if not all CPU cores support the same governors (I dont't have a system to test on that behaves like that)
 - No configuration
 - (Un-)Installation just copies/removes files in hardcoded xfce4 system directories
+- Uninstaller does not remove icons
 - No i18n
 - Does not adhere to xfce4-styleguide
